@@ -1,11 +1,6 @@
-x11()
-library(zoo)
-#WBM FUNCTIONS
-source('C:/DATA/Rscript/04_hydModel/wbm/wbmfxEPOT.R')
-source('C:/DATA/Rscript/04_hydModel/wbm/SNOWROUTINE.r')
-source('C:/DATA/Rscript/04_hydModel/wbm/wbmThornthwaite.r')
-
-
+source('C:/DATA/Rscript/04_hydModel/wbm/01StartHere.R')
+flofile="Rusumo.flo.rdata"
+(flofile=paste("C:\\DATA\\HYDROMET\\FLOW\\EAPMP\\",flofile,sep=""))
 #load('testData.mat') Load data if it exists
 setwd('C:\\DATA\\STATIONS\\wbm_Rusumo\\Calib\\matlab')
 

@@ -1,29 +1,17 @@
-#SHAPEFILE#################################################################################################
-pj4s<-CRS("+proj=longlat +datum=WGS84 +ellps=WGS84")
-eaf<- readShapeSpatial("GIS/Hydrology/Study_limits.shp",proj4string=pj4s)
-ind<- readShapeSpatial("GIS/EastAfrica/indejeWGS.shp",proj4string=pj4s)
-wat<- readShapeSpatial("GIS/EastAfrica/Water_Bodeis.shp",proj4string=pj4s)
-ctry<-readShapeSpatial("GIS/EastAfrica/East_Africa_ctry.shp",proj4string=pj4s)
-getinfo.shape("GIS/EastAfrica/eafcsel.shp")
-#RASTERS#####################################################################################################
-dem<-raster("GIS\\Hydrology\\DEM\\ea_dem30");save(dem,file="dem")
-fac<-raster("GIS\\Hydrology\\DEM\\ea_acc30");save(fac,file="fac")
-dir<-raster("GIS\\Hydrology\\DEM\\ea_dir30");save(dir,file="dir")
-fx.mpz(dem,main="East Africa elevation",xlim=c(29,42),ylim=c(-15,6.5)) #plot all maps
-#get the catchment  bounds
+
 ############################################################################################################
-(box<-basin@bbox)
+(bbox<-basin@bbox)
 #Area of basin
 (area<-fx.areasqm(basin)) #
 (XY<-coordinates(basin)) #centroid
 #RAIN DATA x,y, range #####################################################################################
 #latitudes & longitudes CRU
 #y<-seq(-89.75,90,Dxy); x<-seq(-179.75,180,Dxy) #africa
-y<-seq(-12,2,Dxy); x<-seq(25,45,Dxy) #east Africa
-(xmn<-x[which(abs(x-box["x","min"])==min(abs(x-box["x","min"])))]-diff(x)[1]) #minus resolution
-(xmx<-x[which(abs(x-box["x","max"])==min(abs(x-box["x","max"])))]+diff(x)[1]) #add   resolution
-(ymn<-y[which(abs(y-box["y","min"])==min(abs(y-box["y","min"])))]-diff(x)[1])
-(ymx<-y[which(abs(y-box["y","max"])==min(abs(y-box["y","max"])))]+diff(x)[1])
+y<-seq(-14,6.5,Dxy); x<-seq(28,42.5,Dxy) #east Africa
+(xmn<-x[which(abs(x-bbox["x","min"])==min(abs(x-bbox["x","min"])))]-diff(x)[1]) #minus resolution
+(xmx<-x[which(abs(x-bbox["x","max"])==min(abs(x-bbox["x","max"])))]+diff(x)[1]) #add   resolution
+(ymn<-y[which(abs(y-bbox["y","min"])==min(abs(y-bbox["y","min"])))]-diff(x)[1])
+(ymx<-y[which(abs(y-bbox["y","max"])==min(abs(y-bbox["y","max"])))]+diff(x)[1])
 #COLOR################################################################################################
 #(basin<-unionSpatialPolygons(eaf,eaf@data$Id) );cname="east_Africa" #East Africa
 kagera<-TRUE
@@ -80,7 +68,7 @@ for(i in 1){
   plot(basin,add=TRUE)
   plot(wat,add=TRUE,col="transparent",border="blue")
   };
-#title("PREC",outer=TRUE);box();#par(mfrow=c(1,1))
+#title("PREC",outer=TRUE);bbox();#par(mfrow=c(1,1))
 #TEMPERATURE##################################################################################################  
 # if(file.exists(paste(cname,"tmp.Rdata",sep="."))){
 #   Temp<-get(load(paste(cname,"tmp.Rdata",sep=".")))
@@ -97,7 +85,7 @@ for(i in 1){
   plot(basin,add=TRUE)
   plot(wat,add=TRUE,col="transparent",border="blue")
 }
-#title("TEMP",outer=TRUE);box();#par(mfrow=c(1,1))
+#title("TEMP",outer=TRUE);bbox();#par(mfrow=c(1,1))
 
 #Shape to raster to Matrix##########################################################################################  
 #Shape to raster at resolution diff(x) within xmn-xmx & ymn-ymx
@@ -136,7 +124,8 @@ for(i in 1){
   Z<-Z*bas
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fx.mpz(El,bas=basin)
-image.plot(lonx,laty,Lake,main="Lake Cells",asp=1,col=(lcol),breaks=lbrk);  plot(basin,add=TRUE);plot(wat,add=TRUE,border=4);grid()
+image.plot(lonx,laty,Lake,main="Lake Cells",asp=1,col=(lcol),breaks=lbrk);  
+plot(basin,add=TRUE);plot(wat,add=TRUE,border=4);grid()
 ##dev.off()
 #Plots######################################################################################################  
   #plots
@@ -145,7 +134,7 @@ image.plot(lonx,laty,Lake,main="Lake Cells",asp=1,col=(lcol),breaks=lbrk);  plot
     lx<-seq(min(lonx)-diff(lonx)[1]/2,max(lonx)+diff(lonx)[1]/2,diff(lonx)[1])
     ly<-seq(min(laty)-diff(laty)[1]/2,max(laty)+diff(laty)[1]/2,diff(laty)[1])
     abl<-function(xxx,lx,ly){
-      if(xxx==2){abline(v=lx,h=ly,lty=2,col="grey");axis(1,lx,lx);axis(2,ly,ly);box()}
+      if(xxx==2){abline(v=lx,h=ly,lty=2,col="grey");axis(1,lx,lx);axis(2,ly,ly);bbox()}
       if(xxx==1)plot(expand.grid(lx,ly),xaxt="n",yaxt="n",ylab="lat",xlab="lon",pch="",asp=1)
     }
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -244,12 +233,6 @@ init=cbind(nm,nc,petype,wbmtype)
 write.table(init,file="Obs.ts")
 write.table(init,file="init.txt",sep="\t",quote=FALSE)
 #.............................................................................................................#
-fx.array2mts<-function(Array,rem.arr){#turmns array in series by column, eliinates NA cells in rem.arr
-  mts<-t(apply(Array,3,c)); mts<-mts[1:length(mts)]
-  rem<-t(apply(rem.arr,3,c)); rem<-rem[1:length(rem)]
-  valid<-which(!is.na(rem))
-  mts<-mts[valid]
-}
 (prec<-fx.array2mts(prc,rem.arr))
 (tmpr<-fx.array2mts(tmp,rem.arr))
 (epot<-fx.array2mts(pet,rem.arr))

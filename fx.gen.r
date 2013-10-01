@@ -536,15 +536,15 @@ fx.taylor<-function(y.df,norm=T,mytitle="\nTaylor Plot",tofile=0)# ydf=data.fram
         x<-y.df[,1] #reference. the first is a date
         if(tofile==1){png(width = 1000, height = 1000,file=paste(mytitle,".png",sep=""), bg="white")}
         
-        if(!is.data.frame(y.df)){y.df<-as.data.frame(y.df)}
+        #if(!is.data.frame(y.df)){y.df<-as.data.frame(y.df)}
         pchm<-c("?",LETTERS)
             
         nf <- layout(matrix(c(1,2),1,2,byrow=TRUE), c(6,2), c(6,6), TRUE)
         par(oma=c(1,1,2,1));#c(bottom, left, top, right)
         layout.show(nf)
-        for( n in 1:(dim(y.df)[2]))
+        for( n in 1:ncol(y.df))
         {
-            y<-y.df[n]
+            y<-y.df[,n]
             if(n==2){TF<-FALSE} else {TF<-TRUE} #Add or Not
             taylor.diagram(x,y,add=TF,col=1,pch=20,pos.cor=TRUE,xlab="",ylab="",main="",
                             show.gamma=F,ngamma=20,sd.arcs=10,ref.sd=T,
@@ -1308,6 +1308,28 @@ fx.array2mts<-function(Array,rem.arr){#turmns array in series by column, eliinat
   mts<-mts[valid]
 }
 
+#find the closets value to a number within a sereis
+fx.closest<-function(ext,lon){a<-abs(lon-ext);i<-which(a==min(a));return(i)} #find closest value in series
+
+#gibe a shapefile, lom,lat sereis bouding and time/3rd dim turn shapefile to raster
+fx.polygon2raster2array<-function(shp=ind1,xo,yo,cTim){#shape,lon,lat,time-length or array-3rd dimension
+	ras <- raster(ncols=length(xo), nrows=length(yo))
+	limRas<-c(min(xo)-diff(xo)[1]/2,max(xo)+diff(xo)[1]/2,min(yo)-diff(yo)[1]/2,max(yo)+diff(yo)[1]/2);#raster limits
+	(limRas<-matrix(limRas,2,2,byrow=TRUE))
+	(colnames(limRas)<-c("min","max"))
+	(rownames(limRas)<-c("x","y"))
+	(shp@bbox<-limRas)
+	(extent(ras)<-extent(limRas))#raster extent
+	ras[]<-1#t(R[,ncol(R):1]);
+	bas<-rasterize(shp,ras)
+	bas<-as.matrix(bas)#basin
+	bas<-t(bas[nrow(bas):1,])
+	#Matrix to remove outer cells
+	bas[!is.na(bas)]<-1;
+	bas<-array(bas,c(dim(bas),cTim))
+	return(bas)
+}
+
 
 #retrieve.nc to a list (lon,lt,Tim,val[lon,lat,Tim])
 #Retrievs to model resolution
@@ -1317,7 +1339,7 @@ fx.retrieve.nc=function(file, #nc-file
 	shp=NULL,#shapefile to plot
 	iplot=1, #Timesteps to plot
 	vname=NA, scen="", gcm="",#variable name (optional), scenario,model
-	multip=30*24*3600, #multiply to get units (kg/m2/s to mm/month), temp=1, hum=?,wind=?
+	multip=c(30*24*3600,12,1), #multiply to get units (kg/m2/s to mm/month), temp=1, hum=?,wind=?,12 prcp 3 seas prc else all=1
 	kol1=rgb( colorRamp(c("azure", "blue"))(seq(0, 1, length = 100)), max = 255),
 	kol2=rgb( colorRamp(c("yellow","red")) (seq(0, 1, length = 100)), max = 255),
 	resample=TRUE){ #Resampling to LON,LAT by interp
@@ -1356,7 +1378,7 @@ fx.retrieve.nc=function(file, #nc-file
 	#get value ##Val[lon,lat,time]
 	start=c(IDlon[1],IDlat[1],IDt[1])
 	count=c(clonx,claty,cTim)
-	val<-get.var.ncdf(d,start=start,count=count)*multip; #Val[lon,lat,time]
+	val<-get.var.ncdf(d,start=start,count=count)*multip[1]; #Val[lon,lat,time]
 	val[val<0]<-0
 	out=list(lon=lonx,lat=laty,tim=Tim,val=val) #At GCM resolution
 	
@@ -1392,16 +1414,16 @@ fx.retrieve.nc=function(file, #nc-file
 			val<-bas*val#remove areas outside
 		}
 		
-		out=list(lon=LONX,lat=LATY,tim=Tim,val=val) #Resampled
+		out=list(lon=LONX,lat=LATY,tim=Tim,val=val,cut=bas) #Resampled
 	}
 	
 	#Seasonal values
 	fx<-function(x) mean(x,na.rm=TRUE)
-	out$ann<-12*apply(out$val,c(1,2),fx)
-	out$DJF<-3*apply(val[,,c(seq(12,cTim,12),seq(1,cTim,12),seq(2,cTim,12))],c(1,2),fx)
-	out$MAM<-3*apply(val[,,c(seq(3,cTim,12),seq(4,cTim,12),seq(5,cTim,12))],c(1,2),fx)
-	out$JJA<-3*apply(val[,,c(seq(6,cTim,12),seq(7,cTim,12),seq(8,cTim,12))],c(1,2),fx)
-	out$SON<-3*apply(val[,,c(seq(9,cTim,12),seq(10,cTim,12),seq(11,cTim,12))],c(1,2),fx)
+	out$ann<-multip[2]*apply(out$val,c(1,2),fx)
+	out$DJF<-multip[3]*apply(val[,,c(seq(12,cTim,12),seq(1,cTim,12),seq(2,cTim,12))],c(1,2),fx)
+	out$MAM<-multip[3]*apply(val[,,c(seq(3,cTim,12),seq(4,cTim,12),seq(5,cTim,12))],c(1,2),fx)
+	out$JJA<-multip[3]*apply(val[,,c(seq(6,cTim,12),seq(7,cTim,12),seq(8,cTim,12))],c(1,2),fx)
+	out$SON<-multip[3]*apply(val[,,c(seq(9,cTim,12),seq(10,cTim,12),seq(11,cTim,12))],c(1,2),fx)
 	szlim=range(c(out$DJF,out$MAM,out$JJA,out$SON),na.rm=TRUE)
 	
 	if(vname=="pr"){kol=kol1}else {kol=kol2}
@@ -1432,3 +1454,5 @@ fx.retrieve.nc=function(file, #nc-file
 	
 	return(out)
 }
+
+
