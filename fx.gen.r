@@ -1244,7 +1244,7 @@ fx.Monthdays.Daylight<-function(latd,TQ){ #givena latotude and a month-date
   #maximum possible duration of sunshine
   out<-list(d=d,D=D)
 }
-fx.mpz<-function(dem,basin=NULL,xlim=NA,ylim=NA,main=cname,colf=rainbow){#plot a terrain dataset
+fx.mpz<-function(dem,eaf,basin=NULL,xlim=NA,ylim=NA,main=cname,colf=rainbow){#plot a terrain dataset
   if(is.na(xlim[1])){xlim<-as.numeric(bbox(dem)[1,])}
   if(is.na(ylim[1])){ylim<-as.numeric(bbox(dem)[2,])}
   slope <- terrain(dem, opt='slope')
@@ -1299,4 +1299,136 @@ fx.read.flo=function(flofile="Akagera-Rusumo-SL70003.xls",sname,kagera=TRUE){
 	
 	out=list(sname=sname,flo=Qobs)
 	save(out,file=paste(sname,".flo.rdata",sep=""))
+}
+
+fx.array2mts<-function(Array,rem.arr){#turmns array in series by column, eliinates NA cells in rem.arr
+  mts<-t(apply(Array,3,c)); mts<-mts[1:length(mts)]
+  rem<-t(apply(rem.arr,3,c)); rem<-rem[1:length(rem)]
+  valid<-which(!is.na(rem))
+  mts<-mts[valid]
+}
+
+
+#retrieve.nc to a list (lon,lt,Tim,val[lon,lat,Tim])
+#Retrievs to model resolution
+fx.retrieve.nc=function(file, #nc-file
+	LONX, #longitude required
+	LATX,#latitude required
+	shp=NULL,#shapefile to plot
+	iplot=1, #Timesteps to plot
+	vname=NA, scen="", gcm="",#variable name (optional), scenario,model
+	multip=30*24*3600, #multiply to get units (kg/m2/s to mm/month), temp=1, hum=?,wind=?
+	kol1=rgb( colorRamp(c("azure", "blue"))(seq(0, 1, length = 100)), max = 255),
+	kol2=rgb( colorRamp(c("yellow","red")) (seq(0, 1, length = 100)), max = 255),
+	resample=TRUE){ #Resampling to LON,LAT by interp
+	#Extents
+	(lonEx<-c(min(LONX),max(LONX)))
+	(latEx<-c(min(LATY),max(LATY)))
+	#libraries
+	library(ncdf)
+	library(zoo)
+	library(fields)
+	library(raster)
+	#open file
+	d<-open.ncdf(file);
+	if(is.na(vname)){vname=names(d$var)[length(names(d$var))]}
+	#Dimensions of GCM
+	LON<-d$dim$lon;
+	lon<-LON$vals;nx=length(lon)
+	LAT<-d$dim$lat;
+	lat<-LAT$vals;ny=length(lat)
+	TIM<-d$dim$time;
+	tim<-TIM$vals;
+	torg<-as.Date(unlist(strsplit(TIM$units,"since "))[2])
+	tim<-as.yearmon(torg+tim)
+	#variable
+	#time limits
+	start.end=as.yearmon(c(as.Date("1961-1-1"),as.Date("1990-12-31")))
+	IDt<-match(start.end,tim); 
+	Tim<-tim[IDt[1]:IDt[2]] #subset Time
+	cTim=length(Tim) #count Time
+	#Lon /lat limits
+	fx.closest<-function(ext,lon){a<-abs(lon-ext);i<-which(a==min(a));return(i)} #find closest value in series
+	(IDlon<-c(fx.closest(lonEx[1],lon),fx.closest(lonEx[2],lon)))
+	(IDlat<-c(fx.closest(latEx[1],lat),fx.closest(latEx[2],lat)))
+	lonx<-lon[(IDlon[1]:IDlon[2])]; clonx=length(lonx) #subset latitude
+	laty<-lat[(IDlat[1]:IDlat[2])];claty=length(laty) #subset latitude
+	#get value ##Val[lon,lat,time]
+	start=c(IDlon[1],IDlat[1],IDt[1])
+	count=c(clonx,claty,cTim)
+	val<-get.var.ncdf(d,start=start,count=count)*multip; #Val[lon,lat,time]
+	val[val<0]<-0
+	out=list(lon=lonx,lat=laty,tim=Tim,val=val) #At GCM resolution
+	
+	#Resample to a given LONX,LATY,& cut to the map
+	if(resample==TRUE){
+		s=array(0,dim=c(length(LONX),length(LATY)))
+		s<-raster(s)# new resolution
+		val<-brick(val)
+		val<-raster::resample(val,s,method="bilinear")
+		val<-as.array(val)
+		
+	
+		
+		if(!is.null(shp)){
+			#Shape to raster to Matrix##########################################
+			#Shape to raster at resolution diff(x) within xmn-xmx & ymn-ymx
+			# Create a empty raster based on coordinates
+			ras <- raster(ncols=length(LONX), nrows=length(LATY))
+			limRas<-c(min(LONX)-diff(LONX)[1]/2,max(LONX)+diff(LONX)[1]/2,
+				min(LATY)-diff(LATY)[1]/2,max(LATY)+diff(LATY)[1]/2);#raster limits
+			(limRas<-matrix(limRas,2,2,byrow=TRUE))
+			(colnames(limRas)<-c("min","max"))
+			(rownames(limRas)<-c("x","y"))
+			(shp@bbox<-limRas)
+			(extent(ras)<-extent(limRas))#raster extent
+			ras[]<-1#t(R[,ncol(R):1]);
+			bas<-rasterize(shp,ras)
+			bas<-as.matrix(bas)#basin
+			bas<-t(bas[nrow(bas):1,])
+			#Matrix to remove outer cells
+			bas[!is.na(bas)]<-1;
+			bas<-array(bas,c(dim(bas),cTim))
+			val<-bas*val#remove areas outside
+		}
+		
+		out=list(lon=LONX,lat=LATY,tim=Tim,val=val) #Resampled
+	}
+	
+	#Seasonal values
+	fx<-function(x) mean(x,na.rm=TRUE)
+	out$ann<-12*apply(out$val,c(1,2),fx)
+	out$DJF<-3*apply(val[,,c(seq(12,cTim,12),seq(1,cTim,12),seq(2,cTim,12))],c(1,2),fx)
+	out$MAM<-3*apply(val[,,c(seq(3,cTim,12),seq(4,cTim,12),seq(5,cTim,12))],c(1,2),fx)
+	out$JJA<-3*apply(val[,,c(seq(6,cTim,12),seq(7,cTim,12),seq(8,cTim,12))],c(1,2),fx)
+	out$SON<-3*apply(val[,,c(seq(9,cTim,12),seq(10,cTim,12),seq(11,cTim,12))],c(1,2),fx)
+	szlim=range(c(out$DJF,out$MAM,out$JJA,out$SON),na.rm=TRUE)
+	
+	if(vname=="pr"){kol=kol1}else {kol=kol2}
+	fx.seas.plot<-function(X,tt,kol,szlim){
+		image.plot(out$lon,out$lat,X,asp=1,xlab="lon",ylab="lat",col=kol,zlim=szlim,horizontal=TRUE);
+			if(!is.null(shp)){plot(shp,add=TRUE)}
+			title(toupper(paste(tt)),cex=0.5)
+	}
+	
+	##Plot if iplot is given
+	if(!is.na(iplot)){
+		for(k in iplot){
+			zl<-range(out$val,na.rm=TRUE)
+			image.plot(out$lon,out$lat,out$val[,,k],asp=1,xlab="lon",ylab="lat",col=kol,zlim=zl,horizontal=TRUE);
+			if(!is.null(shp)){plot(shp,add=TRUE)}
+			title(toupper(paste(vname,Tim[k],scen,gcm,sep="|")))
+		}
+		#se3asonal plots
+		fx.seas.plot(out$ann,paste(vname,gcm,"\nANNUAL 1961-1990"),kol,szlim=range(out$ann,na.rm=TRUE))
+		par(mfrow=c(2,2))
+		fx.seas.plot(out$DJF,"DJF 1961-1990",kol,szlim)
+		fx.seas.plot(out$MAM,"MAM 1961-1990",kol,szlim)
+		fx.seas.plot(out$JJA,"JJA 1961-1990",kol,szlim)
+		fx.seas.plot(out$SON,"SON 1961-1990",kol,szlim)
+		title(toupper(paste("\n",vname,scen,gcm,sep="|")),outer=TRUE)
+		par(mfrow=c(1,1))
+	}
+	
+	return(out)
 }

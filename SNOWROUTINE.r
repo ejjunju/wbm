@@ -1,4 +1,4 @@
-functionSNOWROUTINE=function(prc,tmp,snostor,Tsnow,Train,meltmax){#SNOW ACCUMULATION
+SNOWROUTINE=function(prc,tmp,snostor,Tsnow,Train,meltmax){#SNOW ACCUMULATION
 
 
 	if (tmp<Tsnow){
